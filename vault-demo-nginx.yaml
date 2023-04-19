@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: vault
+  labels:
+    app: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "k8s-summit"
+        vault.hashicorp.com/agent-inject-secret-index.html: "kv/data/k8s/summit"
+        vault.hashicorp.com/agent-inject-template-index.html: |
+          <html>
+          <body>
+          <h1>Welcome to the Vault-k8s demo!</h1>
+          <p>Please find some secrets retrieved from Vault :</p>
+          {{- with secret "kv/data/k8s/summit" -}}
+          <ul>
+          <li><pre>username: {{ .Data.data.username }}</pre></li>
+          <li><pre>password: {{ .Data.data.password }}</pre></li>
+          </ul>
+          {{- end }}
+          </body>
+          </html>
+    spec:
+      serviceAccountName: k8s-summit
+      containers:
+        - name: nginx
+          image: nginx
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "ln -sfF /vault/secrets/index.html /usr/share/nginx/html/index.html"] 
+          ports:
+            - containerPort: 80  
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: lb-nginx
+  namespace: vault
+spec:
+  type: LoadBalancer
+  selector:
+    app: nginx
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
